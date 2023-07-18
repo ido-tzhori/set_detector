@@ -1,9 +1,9 @@
 
 import numpy as np
 import cv2
-from joblib import Parallel, delayed
+import sklearn.cluster
 import time
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 CARD_MAX_AREA = 400000
 CARD_MIN_AREA = 200000
@@ -14,13 +14,19 @@ BKG_THRESH = 30
 
 class Card:
     def __init__(self):
-        self.number = 0
-        self.symbol = 'na'
-        self.shading = 'na'
-        self.color = 'na'
+        self.count = 0
+        self.shape = 'unknown'
+        self.shading = 'unknown'
+        self.color = 'unknown'
+        self.outer_contours = []
+        self.inner_contours = []
+        self.corner_points = []
+        self.inner_corner_points = []
+        self.card_area = 0
 
     def __str__(self):
-        return f"Card({self.number}, {self.symbol}, {self.shading}, {self.color})"
+        return f"Card({self.count}, {self.shape}, {self.shading}, {self.color},\
+            {len(self.inner_contours)}, {self.card_area}"
 
 start_time = time.time()
 
@@ -36,12 +42,14 @@ def pre_process(img):
 
 def get_contours(thresh):
     contours, hierarchy = cv2.findContours(thresh, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
-    contour_dict = defaultdict(list)
 
+    card_list = []
     # store outer contour indices for comparison
     outer_indices = []
     # store current inner contours
     current_inner_contours = []
+    current_inner_corner_points = []
+    card_count = 0 ######## ADD COUNTER TO STOP EVENTUALLY #####
 
     for i in range(len(contours)):
         size = cv2.contourArea(contours[i])
@@ -52,31 +60,37 @@ def get_contours(thresh):
 
             # if the contour has no parent, it is an outer contour
             if hierarchy[0][i][3] == -1 and size > CARD_MIN_AREA:
-                # if we are moving to a new outer contour and there were any inner contours detected previously
-                # store those inner contours in the dictionary
                 if current_inner_contours:
-                    contour_dict['inner_contour'].append(current_inner_contours)
+                    # we add the inner contours to the previous card because we have moved to a new outer contour
+                    card_list[-1].inner_contours += current_inner_contours
+                    card_list[-1].inner_corner_points += current_inner_corner_points  # Add inner contours' corner points to the last card
                     current_inner_contours = []  # reset the inner contours list
-                contour_dict['outer_contour'].append(contours[i])
+                    current_inner_corner_points = []
+
+                # initialize card
+
+                card = Card()
+                card.card_area = size
+                card.corner_points = pts
+                card.outer_contours = contours[i]
                 outer_indices.append(i)
+                card_list.append(card)
+                card_count += 1
             elif hierarchy[0][i][3] in outer_indices:  # it's an inner contour if its parent is an outer contour
                 current_inner_contours.append(contours[i])
-            contour_dict['corner_points'].append(pts)
+                current_inner_corner_points.append(pts)
 
-    # add the remaining inner contours after the loop
+    # adding the inner contours for the last card after the loop ends
     if current_inner_contours:
-        contour_dict['inner_contour'].append(current_inner_contours)
-    
-    print(len(contour_dict['inner_contour'][2]))
-
-    return contour_dict
+        card_list[-1].inner_contours += current_inner_contours
+        card_list[-1].inner_corner_points += current_inner_corner_points  # add inner contours' corner points to the last card
+    return card_list
 
 def preprocess_card(contour, corner_points, image):
     """uses the contour to identify the information about a card"""
 
     # initialize card
 
-    set_card = Card()
     x,y,w,h = cv2.boundingRect(contour)
 
     # average = np.sum(corner_points, axis=0)/len(corner_points)
@@ -87,11 +101,26 @@ def preprocess_card(contour, corner_points, image):
 
     return bird_i_view
 
-def classify_card(bird_i_view):
-    card = Card()
+def finish_card(card: Card):
+    count = len(card.inner_contours)
+    card.count = count
+    
+    first_contour = card.inner_contours[0]
+    color = dominant_color(first_contour)
+    print(color)
+    return first_contour
 
 
-
+def dominant_color(first_contour):
+    x,y,w,h = cv2.boundingRect(first_contour)
+    rect_image = image[y:y+h, x:x+w]
+    all_colors = rect_image.reshape((rect_image.shape[0] * rect_image.shape[1], 3))
+    clt = sklearn.cluster.KMeans(n_clusters=2)
+    labels = clt.fit_predict(all_colors)
+    label_counts = Counter(labels)
+    second_dominant = clt.cluster_centers_[label_counts.most_common(2)[1][0]]
+    color = bgr_to_color(second_dominant)
+    return color
 
 
 
@@ -100,7 +129,7 @@ def bgr_to_color(bgr):
     b,g,r = bgr
 
     # if the red value is greater than the green and blue values, return red
-    if r > g and r > b and r > 150:
+    if r > g and r > b and r > 180:
         return "red"
 
     # if the green value is greater than the red and blue values, return green
@@ -184,13 +213,22 @@ image = cv2.imread("images/15.jpg")
 height, width, channels = image.shape
 
 processed_image = pre_process(image)
-cards_dict = get_contours(processed_image)
-contours = [cards_dict['outer_contour'][2]]
-corner_points = cards_dict['corner_points']
+cards_list = get_contours(processed_image)
+idx = 8
+card_idx = cards_list[idx]
+# print(cards_list[idx])
+outer_contours = [card_idx.outer_contours]
+inner_contours = card_idx.inner_contours
+ic = finish_card(card_idx)
+# ic_image = dominant_color(ic, image)
 # birds_i_view = preprocess_card(contours[0], corner_points[0], image)
 
-cv2.drawContours(image, contours, -1, (0, 255, 0), 5)
-cv2.imshow("Image with Contours", image)
+cv2.drawContours(image, inner_contours + outer_contours, -1, (0, 255, 0), 2)
+# cv2.drawContours(image, ic, -1, (0, 255, 0), 5)
+
+cv2.imshow("Image with Con tours", image)
+# cv2.imshow("Image with Con tours", ic_image)
+
 
 end_time = time.time()
 execution_time = end_time - start_time
