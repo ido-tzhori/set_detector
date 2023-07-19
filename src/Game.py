@@ -10,23 +10,51 @@ CARD_MIN_AREA = 200000
 SHAPE_MIN_AREA = 15000
 
 BKG_THRESH = 30
-# CARD_THRESH = 10000
 
 class Card:
     def __init__(self):
         self.count = 0
         self.shape = 'unknown'
-        self.shading = 'unknown'
+        self.shade = 'unknown'
         self.color = 'unknown'
         self.outer_contours = []
         self.inner_contours = []
         self.corner_points = []
         self.inner_corner_points = []
         self.card_area = 0
+        self.center = (0, 0)
 
     def __str__(self):
-        return f"Card({self.count}, {self.shape}, {self.shading}, {self.color},\
-            {len(self.inner_contours)}, {self.card_area}"
+        return f"Card({self.count}, {self.shape}, {self.shade}, {self.color}"
+    
+    def finish_card(self):
+        self.count = len(self.inner_contours)
+
+        first_contour = self.inner_contours[0]
+        first_inner_corner_points = self.inner_corner_points[0]
+        shape = get_shape(first_contour, first_inner_corner_points)
+        label_counts, first_dominant, second_dominant = cluster_color(first_contour)
+        shade = get_shading(label_counts, shape)
+        if shade == 'full':
+            color = bgr_to_color(first_dominant)
+        else:
+            color = bgr_to_color(second_dominant)
+
+        self.shape = shape
+        self.shade = shade
+        self.color = color
+
+        return self
+    
+    def calculate_center(self):
+        # ensure outer_contours is a NumPy array
+
+        if len(self.outer_contours) > 0:
+            x, y, w, h = cv2.boundingRect(self.outer_contours)
+            self.center = (int(x + w/2), int(y + h/2))
+        else:
+            self.center = (0, 0)  # reset to (0, 0) if no contours
+
 
 start_time = time.time()
 
@@ -101,28 +129,50 @@ def preprocess_card(contour, corner_points, image):
 
     return bird_i_view
 
-def finish_card(card: Card):
-    count = len(card.inner_contours)
-    card.count = count
-    
-    first_contour = card.inner_contours[0]
-    color = dominant_color(first_contour)
-    print(color)
-    return first_contour
+def get_shape(first_contour, first_inner_corner_points):
+    convexHull = cv2.convexHull(first_contour, returnPoints = False)
+    convexityDefects = cv2.convexityDefects(first_contour, convexHull)
+    max_defect_length = np.max([d[0][3] for d in convexityDefects])
 
+    if len(first_inner_corner_points) == 4:
+        shape = 'diamonds'
+    elif max_defect_length > 2000:
+        shape = 'squiggle'
+    else:
+        shape = 'oval'
+    return shape
 
-def dominant_color(first_contour):
+def cluster_color(first_contour):
     x,y,w,h = cv2.boundingRect(first_contour)
     rect_image = image[y:y+h, x:x+w]
     all_colors = rect_image.reshape((rect_image.shape[0] * rect_image.shape[1], 3))
     clt = sklearn.cluster.KMeans(n_clusters=2)
     labels = clt.fit_predict(all_colors)
     label_counts = Counter(labels)
+    first_dominant = clt.cluster_centers_[label_counts.most_common(1)[0][0]]
     second_dominant = clt.cluster_centers_[label_counts.most_common(2)[1][0]]
-    color = bgr_to_color(second_dominant)
-    return color
+    # color = bgr_to_color(second_dominant)
+    return label_counts, first_dominant, second_dominant
 
+def get_shading(label_counts, shape):
+    density_ratio = list(label_counts.values())[0]/list(label_counts.values())[1]
+    print(density_ratio)
+    if shape == 'squiggle':  
+        if density_ratio < 0.7:
+            shade = 'full'
+        elif density_ratio < 3.5:
+            shade = 'striped'
+        else:
+            shade = 'empty'
+    else:
+        if density_ratio < 1.4:
+            shade = 'full'
+        elif density_ratio < 5.3:
+            shade = 'striped'
+        else:
+            shade = 'empty'
 
+    return shade
 
 def bgr_to_color(bgr):
     # unpack the RGB values into separate variables
@@ -214,17 +264,11 @@ height, width, channels = image.shape
 
 processed_image = pre_process(image)
 cards_list = get_contours(processed_image)
-idx = 8
-card_idx = cards_list[idx]
-# print(cards_list[idx])
-outer_contours = [card_idx.outer_contours]
-inner_contours = card_idx.inner_contours
-ic = finish_card(card_idx)
-# ic_image = dominant_color(ic, image)
-# birds_i_view = preprocess_card(contours[0], corner_points[0], image)
-
-cv2.drawContours(image, inner_contours + outer_contours, -1, (0, 255, 0), 2)
-# cv2.drawContours(image, ic, -1, (0, 255, 0), 5)
+idx = 5
+c = cards_list[idx].finish_card()
+cl = [s.finish_card() for s in cards_list]
+print(cl)
+cv2.drawContours(image, [c.outer_contours] + c.inner_contours, -1, (0, 255, 0), 5)
 
 cv2.imshow("Image with Con tours", image)
 # cv2.imshow("Image with Con tours", ic_image)
