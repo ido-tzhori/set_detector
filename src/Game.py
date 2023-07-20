@@ -3,6 +3,8 @@ import numpy as np
 from Card import Card
 from ManyCards import ManyCards
 import random
+import time
+import concurrent.futures
 
 colors = [
     (255, 0, 0),   # Red
@@ -22,7 +24,6 @@ colors = [
 ]
 
 font = cv2.FONT_HERSHEY_SIMPLEX
-
 
 class Game:
     def __init__(self, image):
@@ -91,22 +92,25 @@ class Game:
             card_list[-1].inner_contours += current_inner_contours
             card_list[-1].inner_corner_points += current_inner_corner_points  # add inner contours' corner points to the last card
         
-        self.cards = card_list
 
+        self.cards = card_list
         return self
 
     def classify_all_cards(self):
+        start_time = time.time()
 
-        classified_cards = [c.finish_card(image) for c in self.cards]
+        classified_cards = []
+        for c in self.cards:
+            c.finish_card(image)
+            classified_cards.append(c)
         self.cards = classified_cards
-
+        end_time = time.time()
+        print(f'time for function classify_all_cards: {end_time - start_time} seconds')
         return self
 
     def find_sets(self):
-
         cards = ManyCards(self.cards)
         cards.return_all_sets().multiple()
-        print(cards)
         self.sets = cards.sets
 
         return self
@@ -118,6 +122,8 @@ class Game:
             lines = [
                 f"{card.shape}, {str(card.count)}",
                 f"{card.color}, {card.shade}",
+                f"{np.round(card.dominant_gbr)}",
+                f"{np.round(card.density_ratio)}"
             ]
             x = card.center[0] - 200
             y = card.center[1] + 100
@@ -126,6 +132,7 @@ class Game:
 
 
     def display_sets(self):
+        start_time = time.time()
         cv2.namedWindow("x")
 
         for s in self.sets:
@@ -134,27 +141,24 @@ class Game:
             for tup in s:
                 card = tup[0]
                 m = tup[1]
-                adj = 20
-                cv2.rectangle(self.image, tuple(map(lambda x: x - m * adj, card.top_left)),
-                                            tuple(map(lambda x: x + m * adj, card.bottom_right)), random_color, adj)
+                adj = 50  
+                # cv2.rectangle(self.image, tuple(map(lambda x: x - m * adj, card.top_left)),
+                #                             tuple(map(lambda x: x + m * adj, card.bottom_right)), random_color, adj)
                 
         cv2.imshow("Image with Con tours", image)
+
+        end_time = time.time()
+        # print(f'time for function display_sets: {end_time - start_time} seconds')
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
+start_time = time.time()
 image = cv2.imread("images/15.jpg")
 g = Game(image)
 
 g.pre_process().get_contours().classify_all_cards()
 g.find_sets()
+end_time = time.time()
+print(f"total time {end_time - start_time}")
 g.display_cards()
 g.display_sets()
-# for i in g.sets:
-#     for c in i:
-#         print(c)
-# cardd = g.cards[7]
-# cv2.drawContours(image, [cardd.outer_contours] + cardd.inner_contours, -1, (0, 255, 0), 5)
-
-# cv2.imshow("Image with Con tours", image)
-# cv2.waitKey(0)
-# cv2.destroyAllWindows()

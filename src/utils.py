@@ -1,3 +1,5 @@
+import cv2
+
 def flattener(image, pts, w, h):
     """Flattens an image of a card into a top-down 200x300 perspective.
     Returns the flattened, re-sized, grayed image.
@@ -71,7 +73,7 @@ def bgr_to_color(bgr):
     b,g,r = bgr
 
     # if the red value is greater than the green and blue values, return red
-    if r > g and r > b and r > 150:
+    if r > g and r > b and r > 120:
         return "red"
 
     # if the green value is greater than the red and blue values, return green
@@ -84,3 +86,10 @@ def bgr_to_color(bgr):
     
 def all_same_or_different(items):
     return len(set(items)) == 1 or len(set(items)) == len(items)
+
+def resize(img, scale):
+    width = int(img.shape[1] * scale)
+    height = int(img.shape[0] * scale)
+    dim = (width, height)
+    img = cv2.resize(img, dim, interpolation=cv2.INTER_AREA)
+    return img

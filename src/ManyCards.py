@@ -6,8 +6,7 @@ from utils import *
 class ManyCards:
     def __init__(self, cards):
         self.cards = cards
-        self.all_possible_combos = []
-        self.sets = ['hi']
+        self.sets = []
 
     def __str__(self):
         return f"num of sets: {len(self.sets)}"
@@ -34,15 +33,13 @@ class ManyCards:
         for combo in combos:
             if self.is_set(*combo):
                 sets.append(list(combo))
-        
-        self.all_possible_combos = sets
-
+        self.sets = sets
         return self
 
     def multiple(self):
         r = []
         seen = {}
-        for s in self.all_possible_combos:
+        for s in self.sets:
             tup_set = []
             for card in s:
                 if card in seen:
@@ -52,7 +49,6 @@ class ManyCards:
                     tup_set.append((card, 0))
                     seen[card] = 0
             r.append(tup_set)
-
         self.sets = r
 
         return self
