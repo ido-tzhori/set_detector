@@ -7,13 +7,6 @@ import time
 from collections import defaultdict, Counter
 from utils import *
 
-scale = 1
-CARD_MAX_AREA = 400000 * scale
-CARD_MIN_AREA = 200000 * scale
-SHAPE_MIN_AREA = 15000 * scale
-
-BKG_THRESH = 30
-
 class Card:
     def __init__(self):
         self.count = 0
@@ -29,22 +22,27 @@ class Card:
         self.top_left = (0, 0)
         self.bottom_right = (0, 0)
         self.dominant_gbr = (0,0,0)
-        self.density_ratio = 0
+        self.avg_intensity = 0
+        self.unique_number = 0
 
     def __str__(self):
         return f"Card({self.count}, {self.shape}, {self.shade}, {self.color}"
+    
+    def make_id(self):
+        self.id = int("".join([str(len(self.shape)),str(len(self.shade)),str(len(self.color)),str(self.count)]))
+        return self
     
     def finish_card(self, image):
         # image = resize(image, scale)
 
         self.count = len(self.inner_contours)
         self.cluster_pixels(image)
-        self.get_shading()
-
         color = bgr_to_color(self.dominant_gbr)
         self.color = color
         self.get_shape()
+        self.get_shading(image)
         self.calculate_center()
+        self.make_id()
 
         return self
     
@@ -68,7 +66,7 @@ class Card:
         max_defect_length = np.max([d[0][3] for d in convexityDefects])
 
         if len(first_inner_corner_points) == 4:
-            shape = 'diamonds'
+            shape = 'diamond'
         elif max_defect_length > 2000:
             shape = 'squiggle'
         else:
@@ -103,7 +101,7 @@ class Card:
 
         return self
 
-    def cluster_pixels(self, image, resize_dim=40):
+    def cluster_pixels(self, image, resize_dim=30):
         first_contour = self.inner_contours[0]
         x, y, w, h = cv2.boundingRect(first_contour)
 
@@ -113,45 +111,56 @@ class Card:
         all_colors = rect_image.reshape(-1, 3)
 
         # reduce colors using quantization
-        all_colors = (all_colors // 64) * 64
+        all_colors = (all_colors // 32) * 32
 
         # convert to list of tuples
         all_colors = [tuple(color) for color in all_colors]
-
-        # count color occurrences
         color_counts = Counter(all_colors)
-        print(color_counts)
-        # get dominant colors
-        dominant_colors = color_counts.most_common(2)
+
         valid_colors = {color: count for color, count in color_counts.items() if sum(color) < 300 and
                          sum(color) != 0 and len(np.unique(color)) > 1}
         max_color = max(valid_colors, key=valid_colors.get)
 
-        if np.sum(dominant_colors[0][0]) > 400:
-            self.dominant_gbr = dominant_colors[1][0]
-        else:
-            self.dominant_gbr = dominant_colors[0][0]
         self.dominant_gbr = max_color
-        # calculate density ratio
-        density_ratio = dominant_colors[0][1] / dominant_colors[1][1]
-        self.density_ratio = density_ratio
 
         return self
 
-    def get_shading(self):
-        density_ratio = self.density_ratio
-        shape = self.shape
-        if shape == 'squiggle':  
-            if density_ratio < 0.7:
+    def get_shading(self, image):
+        x, y, w, h = cv2.boundingRect(self.inner_contours[0])
+
+        roi = image[y:y+h, x:x+w]
+        all_colors = roi.reshape(-1, 3)
+        
+        # Get all pixels where the sum of the pixel intensities is greater than 350
+        high_intensity_pixels = np.where(np.sum(all_colors, axis=1) > 300)
+
+        # Calculate the total number of pixels
+        total_pixels = roi.shape[0] * roi.shape[1]
+
+        # Calculate the ratio of high-intensity pixels
+        avg_intensity = len(high_intensity_pixels[0]) / total_pixels
+
+        # Find the two most common intensity values
+        self.avg_intensity = avg_intensity
+
+        if self.shape == 'squiggle':
+            if avg_intensity < 0.4:
                 shade = 'full'
-            elif density_ratio < 3.5:
+            elif avg_intensity < 0.84:
+                shade = 'striped'
+            else:
+                shade = 'empty'
+        elif self.shape == 'oval':
+            if avg_intensity < 0.3:
+                shade = 'full'
+            elif avg_intensity < 0.78:
                 shade = 'striped'
             else:
                 shade = 'empty'
         else:
-            if density_ratio < 1.4:
+            if avg_intensity < 0.6:
                 shade = 'full'
-            elif density_ratio < 5.3:
+            elif avg_intensity < 0.84:
                 shade = 'striped'
             else:
                 shade = 'empty'
@@ -161,3 +170,6 @@ class Card:
         return self
 
 
+
+
+print(hash(Card()))

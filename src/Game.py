@@ -6,32 +6,30 @@ import random
 import time
 import concurrent.futures
 
-colors = [
-    (255, 0, 0),   # Red
-    (0, 255, 0),   # Green
-    (0, 0, 255),   # Blue
-    (255, 255, 0), # Yellow
-    (128, 0, 128), # Purple
-    (0, 255, 255), # Cyan
-    (255, 165, 0),  # Orange
-    (255, 192, 203), # Pink
-    (255, 255, 255), # White
-    (0, 0, 0),       # Black
-    (128, 128, 128), # Gray
-    (165, 42, 42),   # Brown
-    (255, 255, 224), # Light Yellow
-    (173, 216, 230), # Light Blue
-]
-
 font = cv2.FONT_HERSHEY_SIMPLEX
 
 class Game:
     def __init__(self, image):
         self.image = image  # input image of the game board
+        self.display_colors = {
+                                (255, 0, 0):0,   # Red
+                                (0, 255, 0):0,   # Green
+                                (0, 0, 255):0,   # Blue
+                                (255, 255, 0):0, # Yellow
+                                (128, 0, 128):0, # Purple
+                                (0, 255, 255):0, # Cyan
+                                (255, 165, 0):0,  # Orange
+                                (255, 192, 203):0, # Pink
+                                (255, 255, 255):0, # White
+                                (0, 0, 0):0,       # Black
+                                (128, 128, 128):0, # Gray
+                                (255, 255, 224):0, # Light Yellow
+                                (173, 216, 230):0, # Light Blue
+                                }
         self.thresh = 0
         self.BKG_THRESH = 30
         self.CARD_MAX_AREA = 400000
-        self.CARD_MIN_AREA = 200000
+        self.CARD_MIN_AREA = 100000
         self.SHAPE_MIN_AREA = 15000
         self.cards = []
         self.sets = []
@@ -116,15 +114,17 @@ class Game:
         return self
 
     def display_cards(self):
-        line_height = 60  # Adjust this value as needed
+        line_height = 60  # adjust this value as needed
         font = cv2.FONT_HERSHEY_SIMPLEX
         for card in self.cards:
             lines = [
                 f"{card.shape}, {str(card.count)}",
                 f"{card.color}, {card.shade}",
-                f"{np.round(card.dominant_gbr)}",
-                f"{np.round(card.density_ratio)}"
+                # f"{np.round(card.dominant_gbr)}",
+                f"{round(card.avg_intensity, 3)}",
+                f"{card.id}"
             ]
+
             x = card.center[0] - 200
             y = card.center[1] + 100
             for i, line in enumerate(lines):
@@ -132,33 +132,37 @@ class Game:
 
 
     def display_sets(self):
-        start_time = time.time()
         cv2.namedWindow("x")
 
-        for s in self.sets:
-            random_color = colors[random.randint(0, len(colors) - 1)]
-            colors.remove(random_color)
+        for i, s in enumerate(self.sets):
+            # Use a hash function to generate a consistent number for each set
+            set_hash = hash(tuple(sorted([tup[0].id for tup in s])))
+            set_hash = abs(set_hash) % len(self.display_colors)
+            while list(self.display_colors.values())[set_hash]:  # if the color is used
+                set_hash = (set_hash + 1) % len(self.display_colors)  # move to the next color
+
+            # when we exit the loop, set_hash points to an unused color
+            set_color = list(self.display_colors.keys())[set_hash]
+            self.display_colors[set_color] = 1  # mark the color as used
+
             for tup in s:
                 card = tup[0]
                 m = tup[1]
                 adj = 50  
-                # cv2.rectangle(self.image, tuple(map(lambda x: x - m * adj, card.top_left)),
-                #                             tuple(map(lambda x: x + m * adj, card.bottom_right)), random_color, adj)
-                
-        cv2.imshow("Image with Con tours", image)
-
-        end_time = time.time()
-        # print(f'time for function display_sets: {end_time - start_time} seconds')
+                cv2.rectangle(self.image, tuple(map(lambda x: x - m * adj, card.top_left)),
+                                            tuple(map(lambda x: x + m * adj, card.bottom_right)), set_color, adj)
+                    
+        cv2.imshow("Image with Con tours", self.image)
+        print(f'time for function display_sets: {end_time - start_time} seconds')
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
 start_time = time.time()
 image = cv2.imread("images/15.jpg")
 g = Game(image)
-
 g.pre_process().get_contours().classify_all_cards()
 g.find_sets()
 end_time = time.time()
-print(f"total time {end_time - start_time}")
+print(end_time - start_time)
 g.display_cards()
 g.display_sets()

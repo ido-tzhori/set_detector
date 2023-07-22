@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 
 def flattener(image, pts, w, h):
     """Flattens an image of a card into a top-down 200x300 perspective.
@@ -77,7 +78,7 @@ def bgr_to_color(bgr):
         return "red"
 
     # if the green value is greater than the red and blue values, return green
-    elif g > r and g > b:
+    elif (g > r and g > b) or g > 50:
         return "green"
 
     # if none of the above conditions are met, return purple
