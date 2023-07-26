@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from . import ManyCards
-from. import Card
+from . import Card
 import random
 import time
 
@@ -17,31 +17,32 @@ class Game:
                                 (255, 255, 0):0, # Yellow
                                 (128, 0, 128):0, # Purple
                                 (0, 255, 255):0, # Cyan
-                                (255, 165, 0):0,  # Orange
                                 (255, 192, 203):0, # Pink
-                                (255, 255, 255):0, # White
                                 (0, 0, 0):0,       # Black
-                                (128, 128, 128):0, # Gray
                                 (173, 216, 230):0, # Light Blue
                                 }
         self.old_sets = None
         self.sets_colors = {}
         self.thresh = 0
-        self.BKG_THRESH = 100
-        self.CARD_MAX_AREA = 60000
+        self.BKG_THRESH = 215
+        self.CARD_MAX_AREA = 45000
         self.CARD_MIN_AREA = 35000
         self.SHAPE_MIN_AREA = 2000
         self.cards = []
         self.sets = []
+
+    def print_sets(self):
+        for set in self.sets:
+            print(set[0][0], set[1][0],set[2][0])
 
     def pre_process(self):
         gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 1)
         img_w, img_h = np.shape(self.image)[:2]
         bkg_level = gray[int(img_h/100)][int(img_w/2)]
-        thresh_level = bkg_level + self.BKG_THRESH
+        thresh_level = self.BKG_THRESH
 
-        retval, thresh = cv2.threshold(blur,thresh_level,255,cv2.THRESH_BINARY)
+        retval, thresh = cv2.threshold(blur,thresh_level,2,cv2.THRESH_BINARY)
         self.thresh = thresh
         return self
     
@@ -57,7 +58,7 @@ class Game:
             size = cv2.contourArea(contours[i])
             if self.SHAPE_MIN_AREA < size < self.CARD_MAX_AREA:
                 peri = cv2.arcLength(contours[i], True)
-                approx = cv2.approxPolyDP(contours[i], 0.01 * peri, True)
+                approx = cv2.approxPolyDP(contours[i], 0.015 * peri, True)
                 pts = np.float32(approx)
                 # if the contour has no parent, it is an outer contour
                 if hierarchy[0][i][3] == -1 and size > self.CARD_MIN_AREA:
@@ -100,7 +101,6 @@ class Game:
         cards = ManyCards.ManyCards(self.cards)
         cards.return_all_sets().multiple()
         self.sets = cards.sets
-
         return self
     
     def update_old_sets(self, current_sets):
@@ -115,13 +115,15 @@ class Game:
         return self
     
     def display_cards(self):
-        line_height = 60  # adjust this value as needed
+        line_height = 45  # adjust this value as needed
         font = cv2.FONT_HERSHEY_SIMPLEX
         for card in self.cards:
             lines = [
-                f"{card.shape}, {str(card.count)}",
-                f"{card.color}, {card.shade}",
-                f"{np.round(card.dominant_gbr)}",
+                f"{card.shape}",
+                 f"{str(card.count)}",
+                f"{card.color}",
+                 f"{card.shade}",
+                # f"{np.round(card.dominant_gbr)}",
                 f"{round(card.avg_intensity, 5)}",
                 # f"{card.id}"
             ]
@@ -155,14 +157,14 @@ class Game:
             for tup in s:
                 card = tup[0]
                 m = tup[1]
-                adj = 50  
+                adj = 9
                 cv2.rectangle(self.image, tuple(map(lambda x: x - m * adj, card.top_left)),
                                             tuple(map(lambda x: x + m * adj, card.bottom_right)), set_color, adj)
-        # if self.old_sets:
-        #     for old_set in self.old_sets:
-        #         if old_set not in [tuple(sorted([tup[0].id for tup in s])) for s in self.sets]:
-        #             # this set doesn't exist anymore, so release its color
-        #             self.display_colors[self.sets_colors[old_set]] = 0
-        #             del self.sets_colors[old_set]
+        if self.old_sets:
+            for old_set in self.old_sets:
+                if old_set not in [tuple(sorted([tup[0].id for tup in s])) for s in self.sets]:
+                    # this set doesn't exist anymore, so release its color
+                    self.display_colors[self.sets_colors[old_set]] = 0
+                    del self.sets_colors[old_set]
 
         return self.image

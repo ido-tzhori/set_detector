@@ -11,6 +11,9 @@ class ManyCards:
         return f"num of sets: {len(self.sets)}"
     
     def is_set(self, card1, card2, card3):
+        # Check if any card count is 0
+        if card1.count == 0 or card2.count == 0 or card3.count == 0:
+            return False
         # Check if the color is a set
         if (card1.color == card2.color and card2.color == card3.color) or \
         (card1.color != card2.color and card2.color != card3.color and card1.color != card3.color):
@@ -25,6 +28,7 @@ class ManyCards:
                     (card1.shape != card2.shape and card2.shape != card3.shape and card1.shape != card3.shape):
                         return True
         return False
+
 
     def return_all_sets(self):
         combos = list(combinations(self.cards, 3))

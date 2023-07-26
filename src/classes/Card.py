@@ -17,12 +17,12 @@ class Card:
         self.center = (0, 0)
         self.top_left = (0, 0)
         self.bottom_right = (0, 0)
-        self.dominant_gbr = (0,0,0)
+        self.dominant_gbr = (0, 0, 0)
         self.avg_intensity = 0
         self.id = 0
 
     def __str__(self):
-        return f"Card({self.count}, {self.shape}, {self.shade}, {self.color}"
+        return f"Card({self.count}, {self.shape}, {self.shade}, {self.color})"
     
     def make_id(self):
         self.id = int("".join([str(len(self.shape)),str(len(self.shade)),str(len(self.color)),str(self.count)]))
@@ -42,7 +42,6 @@ class Card:
         return self
     
     def calculate_center(self):
-
         if len(self.outer_contours) > 0:
             x, y, w, h = cv2.boundingRect(self.outer_contours)
             self.center = (int(x + w/2), int(y + h/2))
@@ -57,13 +56,17 @@ class Card:
         if self.count != 0:
             first_contour = self.inner_contours[0]
             first_inner_corner_points = self.inner_corner_points[0]
+            if len(self.inner_corner_points) > 1:
+                second_inner_corner_points = self.inner_corner_points[1]
+            else:
+                second_inner_corner_points = []
             convexHull = cv2.convexHull(first_contour, returnPoints = False)
             convexityDefects = cv2.convexityDefects(first_contour, convexHull)
             max_defect_length = np.max([d[0][3] for d in convexityDefects])
 
-            if len(first_inner_corner_points) == 4:
+            if len(first_inner_corner_points) == 4 or len(second_inner_corner_points) == 4:
                 shape = 'diamond'
-            elif max_defect_length > 2000:
+            elif max_defect_length > 1000:
                 shape = 'squiggle'
             else:
                 shape = 'oval'
@@ -115,7 +118,7 @@ class Card:
 
             all_colors = [tuple(color) for color in all_colors]
             color_counts = Counter(all_colors)
-            valid_colors = {color: count for color, count in color_counts.items() if sum(color) < 500 and
+            valid_colors = {color: count for color, count in color_counts.items() if sum(color) < 600 and
                             sum(color) != 0 and len(np.unique(color)) > 1}
             max_color = max(valid_colors, key=valid_colors.get)
 
@@ -132,7 +135,7 @@ class Card:
             all_colors = roi.reshape(-1, 3)
             
             # Get all pixels where the sum of the pixel intensities is greater than 350
-            high_intensity_pixels = np.where(np.sum(all_colors, axis=1) > 300)
+            high_intensity_pixels = np.where(np.sum(all_colors, axis=1) > 650)
 
             # Calculate the total number of pixels
             total_pixels = roi.shape[0] * roi.shape[1]
@@ -146,21 +149,21 @@ class Card:
             if self.shape == 'squiggle':
                 if avg_intensity < 0.4:
                     shade = 'full'
-                elif avg_intensity < 0.84:
+                elif avg_intensity < 0.78:
                     shade = 'striped'
                 else:
                     shade = 'empty'
             elif self.shape == 'oval':
                 if avg_intensity < 0.3:
                     shade = 'full'
-                elif avg_intensity < 0.78:
+                elif avg_intensity < 0.65:
                     shade = 'striped'
                 else:
                     shade = 'empty'
             else:
-                if avg_intensity < 0.6:
+                if avg_intensity < 0.55:
                     shade = 'full'
-                elif avg_intensity < 0.84:
+                elif avg_intensity < 0.82:
                     shade = 'striped'
                 else:
                     shade = 'empty'
@@ -168,3 +171,32 @@ class Card:
             self.shade = shade
 
             return self
+    
+    # def get_shading(self, image):
+    #     if self.count != 0:
+
+    #         x, y, w, h = cv2.boundingRect(self.inner_contours[0])
+
+    #         roi = image[y:y+h, x:x+w]
+    #         all_colors = roi.reshape(-1, 3)
+
+    #         # Calculate variance for each channel
+    #         variance_intensity = np.var(all_colors, axis=0)
+
+    #         # Calculate mean intensity for each channel
+    #         mean_intensity = np.mean(all_colors, axis=0)
+
+    #         print(mean_intensity)
+
+    #         # Classify shading based on intensity variance and mean intensity
+    #         if np.all(variance_intensity < 30):
+    #             if np.all(mean_intensity < 128):
+    #                 shade = 'full'
+    #             else:
+    #                 shade = 'empty'
+    #         else:
+    #             shade = 'striped'
+
+    #         self.shade = shade
+
+    #     return self
