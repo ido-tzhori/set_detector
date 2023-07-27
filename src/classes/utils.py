@@ -70,6 +70,8 @@ def flattener(image, pts, w, h):
     return warp
 
 def bgr_to_color(bgr):
+    """Returns the color as a string based on values of BGR"""
+    
     # unpack the RGB values into separate variables
     b,g,r = bgr
 

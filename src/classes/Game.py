@@ -4,49 +4,49 @@ from . import ManyCards
 from . import Card
 import random
 import time
+import hashlib
 
 font = cv2.FONT_HERSHEY_SIMPLEX
+
+# Structure to store the information about a current game
 
 class Game:
     def __init__(self, image):
         self.image = image  # input image of the game board
-        self.display_colors = {
-                                (255, 0, 0):0,   # Red
-                                (0, 255, 0):0,   # Green
-                                (0, 0, 255):0,   # Blue
-                                (255, 255, 0):0, # Yellow
-                                (128, 0, 128):0, # Purple
-                                (0, 255, 255):0, # Cyan
-                                (255, 192, 203):0, # Pink
-                                (0, 0, 0):0,       # Black
-                                (173, 216, 230):0, # Light Blue
-                                }
-        self.old_sets = None
         self.sets_colors = {}
         self.thresh = 0
-        self.BKG_THRESH = 215
-        self.CARD_MAX_AREA = 45000
+        self.BKG_THRESH = 217
+        self.CARD_MAX_AREA = 50000
         self.CARD_MIN_AREA = 35000
-        self.SHAPE_MIN_AREA = 2000
+        self.SHAPE_MIN_AREA = 3500
         self.cards = []
         self.sets = []
 
     def print_sets(self):
+        """ Prints the content of each card in a set for debugging"""
         for set in self.sets:
             print(set[0][0], set[1][0],set[2][0])
 
     def pre_process(self):
+        """ Grays, blurs, then chooses the threshold that picks up the most information.
+            Can either be chosen adaptively by using the bkg_level variable or
+            setting it manually through trial and error"""
+        
         gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 1)
         img_w, img_h = np.shape(self.image)[:2]
         bkg_level = gray[int(img_h/100)][int(img_w/2)]
         thresh_level = self.BKG_THRESH
 
-        retval, thresh = cv2.threshold(blur,thresh_level,2,cv2.THRESH_BINARY)
+        retval, thresh = cv2.threshold(blur,thresh_level,100,cv2.THRESH_BINARY)
         self.thresh = thresh
         return self
     
     def get_contours(self):
+        """ Most important loop to pick up as much information on the first pass.
+            In order to speed up calculation to get real time detection, it only passes
+            through the contours once. Returns a list of cards based on the contour size.
+            Starts filling in all information without calling helper methods"""
         contours, hierarchy = cv2.findContours(self.thresh, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
         card_list = []
         # store outer contour indices for comparison
@@ -56,21 +56,22 @@ class Game:
         current_inner_corner_points = []
         for i in range(len(contours)):
             size = cv2.contourArea(contours[i])
-            if self.SHAPE_MIN_AREA < size < self.CARD_MAX_AREA:
+            if self.SHAPE_MIN_AREA < size < self.CARD_MAX_AREA: # relevant contours are bigger than minimum shape size
+                                                                # and less than the maximum card size
                 peri = cv2.arcLength(contours[i], True)
-                approx = cv2.approxPolyDP(contours[i], 0.015 * peri, True)
+                approx = cv2.approxPolyDP(contours[i], 0.015 * peri, True) # stricter approx of polygon
                 pts = np.float32(approx)
-                # if the contour has no parent, it is an outer contour
+
+                # if the contour has no parent, it is an outer contour -> it is a card
                 if hierarchy[0][i][3] == -1 and size > self.CARD_MIN_AREA:
                     if current_inner_contours:
                         # we add the inner contours to the previous card because we have moved to a new outer contour
                         card_list[-1].inner_contours += current_inner_contours
-                        card_list[-1].inner_corner_points += current_inner_corner_points  # Add inner contours' corner points to the last card
-                        current_inner_contours = []  # reset the inner contours list
+                        card_list[-1].inner_corner_points += current_inner_corner_points  # add inner contours' corner points to the last card
+                        current_inner_contours = []  # reset the contours list
                         current_inner_corner_points = []
 
-                    # initialize card
-
+                    # initialize card if the condition hold and store all information gathered
                     card = Card.Card()
                     card.card_area = size
                     card.corner_points = pts
@@ -90,6 +91,7 @@ class Game:
         return self
 
     def classify_all_cards(self):
+        """ Simple loop to finish the classification of all cards"""
         classified_cards = []
         for c in self.cards:
             c.finish_card(self.image)
@@ -98,21 +100,25 @@ class Game:
         return self
 
     def find_sets(self):
+        """ Initializes a ManyCards class for simple storage of sets and cards
+            returns a list of list (3 elements) of tuples where each tuple is a card in a set
+            and the number of times that card has been seen in each game"""
+        
         cards = ManyCards.ManyCards(self.cards)
         cards.return_all_sets().multiple()
         self.sets = cards.sets
         return self
     
-    def update_old_sets(self, current_sets):
-        self.old_sets = current_sets
+    # def update_old_sets(self, current_sets):
+    #     self.old_sets = current_sets
 
-        old_sets = list(self.sets_colors.keys())
-        for old_set in old_sets:
-            if old_set not in [tuple(sorted([tup[0].id for tup in s])) for s in self.sets]:
-                # this set doesn't exist anymore, so release its color
-                self.display_colors[self.sets_colors[old_set]] = 0
-                del self.sets_colors[old_set]
-        return self
+    #     old_sets = list(self.sets_colors.keys())
+    #     for old_set in old_sets:
+    #         if old_set not in [tuple(sorted([tup[0].id for tup in s])) for s in self.sets]:
+    #             # this set doesn't exist anymore, so release its color
+    #             self.display_colors[self.sets_colors[old_set]] = 0
+    #             del self.sets_colors[old_set]
+    #     return self
     
     def display_cards(self):
         line_height = 45  # adjust this value as needed
@@ -123,8 +129,10 @@ class Game:
                  f"{str(card.count)}",
                 f"{card.color}",
                  f"{card.shade}",
-                # f"{np.round(card.dominant_gbr)}",
-                f"{round(card.avg_intensity, 5)}",
+                # f"{card.center}",
+                f"{card.top_left}",
+                f"{card.bottom_right}",
+                # f"{round(card.avg_intensity, 5)}",
                 # f"{card.id}"
             ]
             # adjust the x, y of the text
@@ -136,35 +144,25 @@ class Game:
         return self.image
 
     def display_sets(self):
-
         for i, s in enumerate(self.sets):
-
             set_id = tuple(sorted([tup[0].id for tup in s]))  # need a hashable type to use as a dict key
-            if set_id in self.sets_colors:
-                # this set was present in the last run, so just reuse its color
-                set_color = self.sets_colors[set_id]
-            else:
-                # this set is new, so assign it an unused color
-                # (use the while loop from before to find an unused color)
-                set_hash = abs(hash(set_id)) % len(self.display_colors)
-                while list(self.display_colors.values())[set_hash]:
-                    set_hash = (set_hash + 1) % len(self.display_colors)
 
-                set_color = list(self.display_colors.keys())[set_hash]
-                self.display_colors[set_color] = 1
-                self.sets_colors[set_id] = set_color  # store the color used by this set
+            # use set_id as seed
+            seed = int(hashlib.sha256(str(set_id).encode('utf-8')).hexdigest(), 16) % 10**9
+            random.seed(seed)
+
+            # generate a unique color for this set
+            set_color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+            self.sets_colors[set_id] = set_color  # store the color used by this set
 
             for tup in s:
                 card = tup[0]
                 m = tup[1]
-                adj = 9
-                cv2.rectangle(self.image, tuple(map(lambda x: x - m * adj, card.top_left)),
-                                            tuple(map(lambda x: x + m * adj, card.bottom_right)), set_color, adj)
-        if self.old_sets:
-            for old_set in self.old_sets:
-                if old_set not in [tuple(sorted([tup[0].id for tup in s])) for s in self.sets]:
-                    # this set doesn't exist anymore, so release its color
-                    self.display_colors[self.sets_colors[old_set]] = 0
-                    del self.sets_colors[old_set]
+                adj = 10
+                top_left = card.top_left
+                bottom_right = card.bottom_right
+                
+                cv2.rectangle(self.image, tuple(map(lambda x: x - m * adj, top_left)),
+                                            tuple(map(lambda x: x + m * adj, bottom_right)), set_color, adj)
 
         return self.image

@@ -3,17 +3,19 @@ import cv2
 from collections import defaultdict, Counter
 from . import utils
 
+# structure to hold information about a card used for set detection and debugging
+
 class Card:
     def __init__(self):
         self.count = 0
         self.shape = ''
         self.shade = ''
         self.color = ''
-        self.outer_contours = []
-        self.inner_contours = []
-        self.corner_points = []
-        self.inner_corner_points = []
-        self.card_area = 0
+        self.outer_contours = [] # larger parent contours of the inner contours
+        self.inner_contours = [] # for the count (number of shapes)
+        self.corner_points = [] # for card detection and border drawing
+        self.inner_corner_points = [] # for shape detection
+        self.card_area = 0 # size in pixels of the contour
         self.center = (0, 0)
         self.top_left = (0, 0)
         self.bottom_right = (0, 0)
@@ -22,14 +24,19 @@ class Card:
         self.id = 0
 
     def __str__(self):
+        """Returns a string representation of a card - used for debugging"""
         return f"Card({self.count}, {self.shape}, {self.shade}, {self.color})"
     
     def make_id(self):
+        """Uses the features of the card to make a unique id for a card"""
+
         self.id = int("".join([str(len(self.shape)),str(len(self.shade)),str(len(self.color)),str(self.count)]))
+
         return self
     
     def finish_card(self, image):
 
+        """Finalizes the card classification based on the outer and inner contours of a card"""
         self.count = len(self.inner_contours)
         self.cluster_pixels(image)
         color = utils.bgr_to_color(self.dominant_gbr)
@@ -42,27 +49,40 @@ class Card:
         return self
     
     def calculate_center(self):
+        """ Stores the center, top left, and bottom right corner of the card
+            used for drawing of the set borders"""
         if len(self.outer_contours) > 0:
             x, y, w, h = cv2.boundingRect(self.outer_contours)
             self.center = (int(x + w/2), int(y + h/2))
-            self.top_left = (x,y)
-            self.bottom_right = (x+w, y+h)
+            if w < 176: # sometime it bugs for some reason -> set it manually
+                self.top_left = (x,y)
+                self.bottom_right = (x + w, y + h)
+            else:
+                self.top_left = (x,y)
+                self.bottom_right = (x + 172, y + h)
         else:
             self.center = (0, 0)  # reset to (0, 0) if no contours
 
         return self
 
     def get_shape(self):
+        """Determines and assigns the shape of the card.
+
+        The shape of the card is identified based on its convexity defects and inner corner points. If the number
+        of inner corner points is 4, it is a diamond. If the maximum length of convexity defects is more than 1000, 
+        it is a squiggle. Otherwise, it is an oval"""
+
         if self.count != 0:
-            first_contour = self.inner_contours[0]
-            first_inner_corner_points = self.inner_corner_points[0]
+            first_contour = self.inner_contours[0] # first contour is the contour of the shape
+            first_inner_corner_points = self.inner_corner_points[0] # estimated cornor points of the shape
             if len(self.inner_corner_points) > 1:
-                second_inner_corner_points = self.inner_corner_points[1]
+                second_inner_corner_points = self.inner_corner_points[1] # double checks for clarity
             else:
                 second_inner_corner_points = []
             convexHull = cv2.convexHull(first_contour, returnPoints = False)
             convexityDefects = cv2.convexityDefects(first_contour, convexHull)
-            max_defect_length = np.max([d[0][3] for d in convexityDefects])
+            max_defect_length = np.max([d[0][3] for d in convexityDefects]) # max defect length of bounding rectangle
+                                                                            # measured in pixels
 
             if len(first_inner_corner_points) == 4 or len(second_inner_corner_points) == 4:
                 shape = 'diamond'
@@ -72,6 +92,7 @@ class Card:
                 shape = 'oval'
             
             self.shape = shape
+
             return self
     
     # def cluster_pixels_k_means(self, image, batch_size=1000):
@@ -101,6 +122,8 @@ class Card:
     #     return self
 
     def cluster_pixels(self, image, resize_dim=30):
+        """ Shrinks the image for faster processing. Then it returns the dominant
+            color that is not a 'dull' color based on criteria from trial and error"""
         if self.count != 0:
 
             first_contour = self.inner_contours[0]
@@ -111,15 +134,15 @@ class Card:
 
             all_colors = rect_image.reshape(-1, 3)
 
-            # reduce colors using quantization
+            # reduce colors using quantization -> less colors for Counter()
             all_colors = (all_colors // 64) * 64
 
             # convert to list of tuples
 
-            all_colors = [tuple(color) for color in all_colors]
+            all_colors = [tuple(color) for color in all_colors] # needs to be hashable
             color_counts = Counter(all_colors)
             valid_colors = {color: count for color, count in color_counts.items() if sum(color) < 600 and
-                            sum(color) != 0 and len(np.unique(color)) > 1}
+                            sum(color) != 0 and len(np.unique(color)) > 1} # filters the white background of the card
             max_color = max(valid_colors, key=valid_colors.get)
 
             self.dominant_gbr = max_color
@@ -127,6 +150,14 @@ class Card:
         return self
 
     def get_shading(self, image):
+        """Determines and assigns the shading of the card.
+
+        Calculates the average pixel intensity of pixels based on criteria found through
+        trial and error.
+
+        Based on the average intensity and the shape of the card, it then determines the shading of the card: 
+        'full', 'striped', or 'empty'. These thresholds vary based on the card's shape"""
+
         if self.count != 0:
 
             x, y, w, h = cv2.boundingRect(self.inner_contours[0])
@@ -134,18 +165,18 @@ class Card:
             roi = image[y:y+h, x:x+w]
             all_colors = roi.reshape(-1, 3)
             
-            # Get all pixels where the sum of the pixel intensities is greater than 350
+            # get all pixels where the sum of the pixel intensities is greater than 350
             high_intensity_pixels = np.where(np.sum(all_colors, axis=1) > 650)
 
-            # Calculate the total number of pixels
+            # calculate the total number of pixels
             total_pixels = roi.shape[0] * roi.shape[1]
 
-            # Calculate the ratio of high-intensity pixels
-            avg_intensity = len(high_intensity_pixels[0]) / total_pixels
+            # calculate the ratio of high-intensity pixels
 
-            # Find the two most common intensity values
+            avg_intensity = len(high_intensity_pixels[0]) / total_pixels
             self.avg_intensity = avg_intensity
 
+            # different values for different shapes
             if self.shape == 'squiggle':
                 if avg_intensity < 0.4:
                     shade = 'full'
