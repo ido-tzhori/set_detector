@@ -161,10 +161,11 @@ class Card:
         if self.count != 0:
 
             x, y, w, h = cv2.boundingRect(self.inner_contours[0])
-
-            roi = image[y:y+h, x:x+w]
+            x_c, y_c = (int(x + w/2), int(y + h/2))
+            n_pix = 25
+            roi = image[y_c:y_c + n_pix, x_c:x_c + n_pix]
             all_colors = roi.reshape(-1, 3)
-            
+            print(all_colors)
             # get all pixels where the sum of the pixel intensities is greater than 350
             high_intensity_pixels = np.where(np.sum(all_colors, axis=1) > 650)
 
@@ -203,31 +204,45 @@ class Card:
 
             return self
     
-    # def get_shading(self, image):
-    #     if self.count != 0:
+    def get_shading(self, image):
+        """Determines and assigns the shading of the card."""
 
-    #         x, y, w, h = cv2.boundingRect(self.inner_contours[0])
+        if self.count != 0:
+            x, y, w, h = cv2.boundingRect(self.inner_contours[0])
+            x_c, y_c = (int(x + w/2), int(y + h/2))
 
-    #         roi = image[y:y+h, x:x+w]
-    #         all_colors = roi.reshape(-1, 3)
+            n_pix = 20  # size of ROI to consider
 
-    #         # Calculate variance for each channel
-    #         variance_intensity = np.var(all_colors, axis=0)
+            # make sure ROI stays within image bounds
 
-    #         # Calculate mean intensity for each channel
-    #         mean_intensity = np.mean(all_colors, axis=0)
+            y_start = max(0, y_c - n_pix // 2)
+            y_end = min(image.shape[0], y_c + n_pix // 2)
 
-    #         print(mean_intensity)
+            x_start = max(0, x_c - n_pix // 2)
+            x_end = min(image.shape[1], x_c + n_pix // 2)
 
-    #         # Classify shading based on intensity variance and mean intensity
-    #         if np.all(variance_intensity < 30):
-    #             if np.all(mean_intensity < 128):
-    #                 shade = 'full'
-    #             else:
-    #                 shade = 'empty'
-    #         else:
-    #             shade = 'striped'
+            roi = image[y_start:y_end, x_start:x_end]
+            all_colors = roi.reshape(-1, 3)
 
-    #         self.shade = shade
+            # get all pixels where the sum of the pixel intensities is greater than 650
+            high_intensity_pixels = np.where(np.sum(all_colors, axis=1) > 660)
 
-    #     return self
+            # calculate the total number of pixels
+            total_pixels = roi.shape[0] * roi.shape[1]
+
+            # calculate the ratio of high-intensity pixels
+            avg_intensity = len(high_intensity_pixels[0]) / total_pixels
+            self.avg_intensity = avg_intensity
+
+            if avg_intensity > 0.98:
+                shade = 'empty'
+            elif avg_intensity < 0.02:
+                shade = 'full'
+            else:
+                shade = 'striped'
+
+            self.shade = shade
+
+            return self
+
+

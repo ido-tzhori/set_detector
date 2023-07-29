@@ -14,7 +14,7 @@ def process_frame(frame):
     g.get_contours()
     g.classify_all_cards()
     g.find_sets()
-    # processed_frame = g.display_cards() # uncomment if you want to see the information as text
+    g.display_cards() # uncomment if you want to see the information as text
     processed_frame = g.display_sets()
     return processed_frame, len(g.sets)
 
@@ -29,7 +29,14 @@ def main():
     """
 
     # add the path of the video
-    video = cv2.VideoCapture('/Users/idotzhori/Desktop/set_detector/images/video_3.MOV')
+    path = '/Users/idotzhori/Desktop/set_detector/videos/video_3.MOV'
+    video = cv2.VideoCapture(path)
+
+    # Define the codec and create a VideoWriter object
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    frame_width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    out = cv2.VideoWriter('output.mp4', fourcc, 20.0, (frame_width, frame_height))
 
     # get the start time
     start_time = time.time()
@@ -73,17 +80,22 @@ def main():
         # calculate the position of the text (centered on top)
         position = (frame_width//2 - text_size[0]//2, 30) 
 
-        # show the frame
+        # add text to the frame
         cv2.putText(frame, text_sets, position, font, font_scale, color, thickness)
+
+        # write the frame to the output video file
+        out.write(frame)
+
+        # show the frame
         cv2.imshow('Video feed', frame)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):  # press 'q' to quit
             break
 
     video.release()
+    out.release()  # release the VideoWriter
     cv2.destroyAllWindows()
-
-    print(elapsed_time)
+    print('Done')
 
 if __name__ == "__main__":
     main()

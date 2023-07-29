@@ -121,6 +121,7 @@ class Game:
     #     return self
     
     def display_cards(self):
+        """ Method to draw the information of a card on the card for debugging"""
         line_height = 45  # adjust this value as needed
         font = cv2.FONT_HERSHEY_SIMPLEX
         for card in self.cards:
@@ -130,9 +131,9 @@ class Game:
                 f"{card.color}",
                  f"{card.shade}",
                 # f"{card.center}",
-                f"{card.top_left}",
-                f"{card.bottom_right}",
-                # f"{round(card.avg_intensity, 5)}",
+                # f"{card.top_left}",
+                # f"{card.bottom_right}",
+                f"{round(card.avg_intensity, 5)}",
                 # f"{card.id}"
             ]
             # adjust the x, y of the text
@@ -140,14 +141,21 @@ class Game:
             y = card.center[1] - 100
             for i, line in enumerate(lines):
                 cv2.putText(self.image, line, (x, y + i * line_height), font, 1, (0,0,0), 4, cv2.LINE_AA)
+            
+            # cv2.drawContours(self.image, [card.inner_contours[0]], -1, (0, 255, 0), 2)
 
         return self.image
 
     def display_sets(self):
+        """ Uses the list of list of tuples from the find_sets method to draw a border on the
+            the three cards that make a set. Uses the number of times the card has seen to increment
+            the border width and height"""
         for i, s in enumerate(self.sets):
+
             set_id = tuple(sorted([tup[0].id for tup in s]))  # need a hashable type to use as a dict key
 
-            # use set_id as seed
+            # use set_id as seed for random color generation. This ensures the color remains consistent
+            # on every frame of the game
             seed = int(hashlib.sha256(str(set_id).encode('utf-8')).hexdigest(), 16) % 10**9
             random.seed(seed)
 
@@ -162,6 +170,7 @@ class Game:
                 top_left = card.top_left
                 bottom_right = card.bottom_right
                 
+                # increments the width and height of the border by m (number of times the card has been used in a set)
                 cv2.rectangle(self.image, tuple(map(lambda x: x - m * adj, top_left)),
                                             tuple(map(lambda x: x + m * adj, bottom_right)), set_color, adj)
 
