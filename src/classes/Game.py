@@ -3,7 +3,6 @@ import numpy as np
 from . import ManyCards
 from . import Card
 import random
-import time
 import hashlib
 
 font = cv2.FONT_HERSHEY_SIMPLEX
@@ -109,17 +108,6 @@ class Game:
         self.sets = cards.sets
         return self
     
-    # def update_old_sets(self, current_sets):
-    #     self.old_sets = current_sets
-
-    #     old_sets = list(self.sets_colors.keys())
-    #     for old_set in old_sets:
-    #         if old_set not in [tuple(sorted([tup[0].id for tup in s])) for s in self.sets]:
-    #             # this set doesn't exist anymore, so release its color
-    #             self.display_colors[self.sets_colors[old_set]] = 0
-    #             del self.sets_colors[old_set]
-    #     return self
-    
     def display_cards(self):
         """ Method to draw the information of a card on the card for debugging"""
         line_height = 45  # adjust this value as needed
@@ -133,7 +121,7 @@ class Game:
                 # f"{card.center}",
                 # f"{card.top_left}",
                 # f"{card.bottom_right}",
-                f"{round(card.avg_intensity, 5)}",
+                # f"{round(card.avg_intensity, 5)}",
                 # f"{card.id}"
             ]
             # adjust the x, y of the text
@@ -145,6 +133,13 @@ class Game:
             # cv2.drawContours(self.image, [card.inner_contours[0]], -1, (0, 255, 0), 2)
 
         return self.image
+
+    def sort_sets(self):
+        """Sorts the sets of cards by their ids"""
+        
+        self.sets.sort(key=lambda s: tuple(card_tuple[0].id for card_tuple in s))
+
+
 
     def display_sets(self):
         """ Uses the list of list of tuples from the find_sets method to draw a border on the
@@ -175,3 +170,53 @@ class Game:
                                             tuple(map(lambda x: x + m * adj, bottom_right)), set_color, adj)
 
         return self.image
+
+    def display_warps(self, canvas_width, canvas_height, n_sets=15):
+        """Draws the sets on the right of the game canvas"""
+
+        # prepare a blank white canvas
+        canvas = np.ones((canvas_height, canvas_width, 3), np.uint8) * 255  # white canvas
+        # if no sets found, return blank canvas
+        if len(self.sets) == 0:
+            return canvas
+
+        # calculate set and card dimensions based on canvas size and number of spots
+        set_height = canvas_height // (n_sets)
+        card_width = canvas_width // 3
+
+        # calculate gap size
+        card_gap = 8  # adjust as desired
+        set_gap = 30  # adjust as desired
+
+        # adjust card dimensions to account for gaps
+        card_width -= 2 * card_gap
+        set_height -= 1 * set_gap
+
+        # place each card of each set in the canvas
+
+        for i, s in enumerate(self.sets):
+            s_sorted = sorted(s, key=lambda card_tuple: card_tuple[0].count)
+
+            for j, card_tuple in enumerate(s_sorted):
+                card = card_tuple[0]
+                warp = card.warp_card(self.image)
+
+                # maintain the aspect ratio of the warped image
+                warped_width, warped_height, _ = warp.shape
+                aspect_ratio = warped_height / warped_width + 0.35
+                card_height = int(card_width * aspect_ratio)
+                
+                # resize the warped image to fit into the canvas
+                warp_resized = cv2.resize(warp, (card_width, card_height))
+
+                # calculate start and end positions for the card image, accounting for gaps
+                y_start = i * (set_height + 2 * set_gap) + 10
+                y_end = y_start + card_height
+
+                x_start = j * (card_width + 2 * card_gap) + 10
+                x_end = x_start + card_width
+
+                # place the warped resized card image on the canvas
+                canvas[y_start:y_end, x_start:x_end] = warp_resized
+
+        return canvas

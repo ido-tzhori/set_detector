@@ -1,5 +1,3 @@
-import numpy as np
-from . import Card
 from itertools import combinations
 
 # structure to hold information about many cards - calculates sets

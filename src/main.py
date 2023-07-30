@@ -1,22 +1,33 @@
 import cv2
 from classes import Game
 import time
+from classes import utils
+import numpy as np
 
-def process_frame(frame):
+def process_frame(frame, canvas_width=400):
     """
     Processes a single frame of the video to identify and count card sets.
 
     This function creates a Game instance for the given frame, performs pre-processing,
     contour detection, card classification, and set finding on the frame. It then displays
-    the identified cards and sets on the frame."""
+    the identified cards and sets on the frame, and displays the warped card sets on a canvas.
+    """
     g = Game.Game(frame)
     g.pre_process()
     g.get_contours()
     g.classify_all_cards()
     g.find_sets()
-    g.display_cards() # uncomment if you want to see the information as text
-    processed_frame = g.display_sets()
+    g.sort_sets()
+    frame_height, _, _ = frame.shape
+    canvas = g.display_warps(canvas_width, frame_height)
+
+    g.display_cards()  # uncomment if you want to see the information as text
+
+    # concatenate the video frame and the canvas
+    processed_frame = np.concatenate((g.display_sets(), canvas), axis=1)
+
     return processed_frame, len(g.sets)
+
 
 def main():
     """
@@ -27,19 +38,23 @@ def main():
     until all frames have been read or the user presses 'q'. It then releases the video file 
     and destroys all created windows, and prints the total elapsed time.
     """
-
-    # add the path of the video
+    start_time = time.time()
     path = '/Users/idotzhori/Desktop/set_detector/videos/video_3.MOV'
     video = cv2.VideoCapture(path)
 
-    # Define the codec and create a VideoWriter object
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    frame_width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    out = cv2.VideoWriter('output.mp4', fourcc, 20.0, (frame_width, frame_height))
+    ret, frame = video.read()  # read the first frame
 
-    # get the start time
-    start_time = time.time()
+    if not ret:
+        print("Error: Can't read video")
+        return
+
+    # process and manipulate the first frame
+    frame, _ = process_frame(frame)
+
+    # Define the codec and create a VideoWriter object with the dimensions of the processed frame
+    frame_height, frame_width, _ = frame.shape
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter('output.mp4', fourcc, 20.0, (frame_width, frame_height))
 
     while True:
         ret, frame = video.read()
@@ -67,9 +82,9 @@ def main():
 
         text_sets = f'number of sets: {n}'
         font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 1
+        font_scale = 2
         color = (255, 255, 255)  # white color
-        thickness = 2
+        thickness = 4
 
         # get the size of the text box
         text_size, _ = cv2.getTextSize(text_sets, font, font_scale, thickness)
@@ -78,7 +93,7 @@ def main():
         frame_height, frame_width, _ = frame.shape
         
         # calculate the position of the text (centered on top)
-        position = (frame_width//2 - text_size[0]//2, 30) 
+        position = (400, 60) 
 
         # add text to the frame
         cv2.putText(frame, text_sets, position, font, font_scale, color, thickness)

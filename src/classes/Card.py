@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from collections import defaultdict, Counter
+from collections import Counter
 from . import utils
 
 # structure to hold information about a card used for set detection and debugging
@@ -11,13 +11,14 @@ class Card:
         self.shape = ''
         self.shade = ''
         self.color = ''
-        self.outer_contours = [] # larger parent contours of the inner contours
+        self.outer_contours = None # larger parent contours of the inner contours
         self.inner_contours = [] # for the count (number of shapes)
-        self.corner_points = [] # for card detection and border drawing
+        self.corner_points = None
         self.inner_corner_points = [] # for shape detection
         self.card_area = 0 # size in pixels of the contour
         self.center = (0, 0)
         self.top_left = (0, 0)
+        self.w_h = (0, 0)
         self.bottom_right = (0, 0)
         self.dominant_gbr = (0, 0, 0)
         self.avg_intensity = 0
@@ -53,6 +54,7 @@ class Card:
             used for drawing of the set borders"""
         if len(self.outer_contours) > 0:
             x, y, w, h = cv2.boundingRect(self.outer_contours)
+            self.w_h = (w, h)
             self.center = (int(x + w/2), int(y + h/2))
             if w < 176: # sometime it bugs for some reason -> set it manually
                 self.top_left = (x,y)
@@ -149,63 +151,60 @@ class Card:
 
         return self
 
+    # def get_shading(self, image):
+
+    #     if self.count != 0:
+
+    #         x, y, w, h = cv2.boundingRect(self.inner_contours[0])
+    #         x_c, y_c = (int(x + w/2), int(y + h/2))
+    #         n_pix = 25
+    #         roi = image[y_c:y_c + n_pix, x_c:x_c + n_pix]
+    #         all_colors = roi.reshape(-1, 3)
+    #         print(all_colors)
+    #         # get all pixels where the sum of the pixel intensities is greater than 350
+    #         high_intensity_pixels = np.where(np.sum(all_colors, axis=1) > 650)
+
+    #         # calculate the total number of pixels
+    #         total_pixels = roi.shape[0] * roi.shape[1]
+
+    #         # calculate the ratio of high-intensity pixels
+
+    #         avg_intensity = len(high_intensity_pixels[0]) / total_pixels
+    #         self.avg_intensity = avg_intensity
+
+    #         # different values for different shapes
+    #         if self.shape == 'squiggle':
+    #             if avg_intensity < 0.4:
+    #                 shade = 'full'
+    #             elif avg_intensity < 0.78:
+    #                 shade = 'striped'
+    #             else:
+    #                 shade = 'empty'
+    #         elif self.shape == 'oval':
+    #             if avg_intensity < 0.3:
+    #                 shade = 'full'
+    #             elif avg_intensity < 0.65:
+    #                 shade = 'striped'
+    #             else:
+    #                 shade = 'empty'
+    #         else:
+    #             if avg_intensity < 0.55:
+    #                 shade = 'full'
+    #             elif avg_intensity < 0.82:
+    #                 shade = 'striped'
+    #             else:
+    #                 shade = 'empty'
+
+    #         self.shade = shade
+
+    #         return self
+    
     def get_shading(self, image):
         """Determines and assigns the shading of the card.
 
-        Calculates the average pixel intensity of pixels based on criteria found through
-        trial and error.
-
-        Based on the average intensity and the shape of the card, it then determines the shading of the card: 
-        'full', 'striped', or 'empty'. These thresholds vary based on the card's shape"""
-
-        if self.count != 0:
-
-            x, y, w, h = cv2.boundingRect(self.inner_contours[0])
-            x_c, y_c = (int(x + w/2), int(y + h/2))
-            n_pix = 25
-            roi = image[y_c:y_c + n_pix, x_c:x_c + n_pix]
-            all_colors = roi.reshape(-1, 3)
-            print(all_colors)
-            # get all pixels where the sum of the pixel intensities is greater than 350
-            high_intensity_pixels = np.where(np.sum(all_colors, axis=1) > 650)
-
-            # calculate the total number of pixels
-            total_pixels = roi.shape[0] * roi.shape[1]
-
-            # calculate the ratio of high-intensity pixels
-
-            avg_intensity = len(high_intensity_pixels[0]) / total_pixels
-            self.avg_intensity = avg_intensity
-
-            # different values for different shapes
-            if self.shape == 'squiggle':
-                if avg_intensity < 0.4:
-                    shade = 'full'
-                elif avg_intensity < 0.78:
-                    shade = 'striped'
-                else:
-                    shade = 'empty'
-            elif self.shape == 'oval':
-                if avg_intensity < 0.3:
-                    shade = 'full'
-                elif avg_intensity < 0.65:
-                    shade = 'striped'
-                else:
-                    shade = 'empty'
-            else:
-                if avg_intensity < 0.55:
-                    shade = 'full'
-                elif avg_intensity < 0.82:
-                    shade = 'striped'
-                else:
-                    shade = 'empty'
-
-            self.shade = shade
-
-            return self
-    
-    def get_shading(self, image):
-        """Determines and assigns the shading of the card."""
+        Calculates the average pixel intensity of pixels of a square in the middle
+        of the first inner contour based. this determines the shading of the card: 
+        'full', 'striped', or 'empty'"""
 
         if self.count != 0:
             x, y, w, h = cv2.boundingRect(self.inner_contours[0])
@@ -244,5 +243,14 @@ class Card:
             self.shade = shade
 
             return self
+        
+    def warp_card(self, image):
+        if self.count != 0:
+            pts = self.corner_points
+            w, h = self.w_h
+
+            warp = utils.flattener(image, pts, w, h)
+
+            return warp
 
 
